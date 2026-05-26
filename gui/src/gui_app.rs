@@ -64,6 +64,11 @@ impl eframe::App for NovaGuiApp {
         // Request repaint every 100ms to keep dashboard refreshed (process ticks, logs, vga)
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
 
+        // Force dark mode with a pure black background for all panels
+        let mut visuals = egui::Visuals::dark();
+        visuals.panel_fill = egui::Color32::BLACK;
+        ctx.set_visuals(visuals);
+
         // Intercept keyboard events for VGA terminal if another text box is not focused
         if !ctx.wants_keyboard_input() {
             ctx.input(|i| {
