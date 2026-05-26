@@ -138,10 +138,10 @@ impl eframe::App for NovaGuiApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.columns(2, |columns| {
+            ui.horizontal(|ui| {
                 // Left column: Simulated VGA console
-                let ui_vga = &mut columns[0];
-                ui_vga.vertical(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(640.0);
                     let lock_status = if classroom::is_terminal_locked() {
                         "⚠️ TERMINAL LOCKED BY INSTRUCTOR"
                     } else {
@@ -182,9 +182,12 @@ impl eframe::App for NovaGuiApp {
                     ui.label(egui::RichText::new("Click inside the app window and type directly to use the terminal. Use Ctrl+C if locked.").color(egui::Color32::GRAY).small());
                 });
 
+                // Spacing separator
+                ui.add_space(16.0);
+
                 // Right column: Dashboard Educational Tabs
-                let ui_tabs = &mut columns[1];
-                ui_tabs.vertical(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(ui.available_width());
                     // Tab selection bar
                     ui.horizontal_wrapped(|ui| {
                         ui.selectable_value(&mut self.active_tab, Tab::KernelVisualizer, "📊 Visualizer");

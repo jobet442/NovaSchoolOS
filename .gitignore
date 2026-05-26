@@ -1,0 +1,25 @@
+# Rust build artifacts
+/target/
+/target_cmd/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+db.db
+*.lnk
+*.ini
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln
+*.swp
+*.swo
+
+# Local/temporary files
+*.log
+tmp/
+temp/
