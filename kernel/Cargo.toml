@@ -1,0 +1,26 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "novaschool_kernel"
+path = "src/main.rs"
+
+[dependencies]
+drivers = { path = "../drivers" }
+bootloader = "0.9"
+
+[target.'cfg(not(target_os = "none"))'.dependencies]
+filesystem = { path = "../filesystem" }
+networking = { path = "../networking" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[package.metadata.bootimage]
+test-args = [
+    "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04",
+    "-serial", "stdio",
+    "-display", "none"
+]
+test-success-exit-code = 33

@@ -1,0 +1,11 @@
+[package]
+name = "userspace"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+filesystem = { path = "../filesystem" }
+kernel = { path = "../kernel" }
+drivers = { path = "../drivers" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

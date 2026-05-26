@@ -1,0 +1,9 @@
+[package]
+name = "drivers"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# We'll use cross-crate synchronization like Mutex and Spinlock.
+# For simplicity, we can use std Mutex on the host, but since we want to show kernel principles,
+# we will implement spinlocks and custom mutexes.
