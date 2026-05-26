@@ -413,3 +413,21 @@ pub fn vfs_list_dir(path: &str) -> Result<Vec<(String, u32, bool, u16)>, String>
         }
     }
 }
+
+// Expose active VFS mount points for visualizer
+pub fn get_vfs_mount_points() -> Vec<MountPoint> {
+    let mounts = MOUNT_POINTS.lock().unwrap();
+    mounts.clone()
+}
+
+// Expose open VFS file descriptors for visualizer
+pub fn get_vfs_open_files() -> Vec<(usize, FileDescriptor)> {
+    let fd_table_lock = FILE_DESCRIPTOR_TABLE.lock().unwrap();
+    if let Some(ref fd_table) = *fd_table_lock {
+        let mut list: Vec<(usize, FileDescriptor)> = fd_table.iter().map(|(&fd, desc)| (fd, desc.clone())).collect();
+        list.sort_by_key(|item| item.0);
+        list
+    } else {
+        Vec::new()
+    }
+}

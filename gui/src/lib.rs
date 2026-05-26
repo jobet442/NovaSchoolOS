@@ -556,7 +556,7 @@ pub fn start_gui_environment() -> Result<(), std::io::Error> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("NovaSchool OS Simulator")
+            .with_title("NovaSchool OS Kernel")
             .with_inner_size([1280.0, 620.0]),
         ..Default::default()
     };
