@@ -21,7 +21,7 @@ pub fn poll_ssh_events() {
             if !is_auth {
                 if cmd == "auth password_teacher123" {
                     *SSH_AUTHENTICATED.lock().unwrap() = true;
-                    queue_output("Authentication Successful. Welcome to NovaSchool Remote SSH Console.\n");
+                    queue_output("Authentication Successful. Welcome to NovaOS Remote SSH Console.\n");
                 } else {
                     queue_output("SSH Connection: Please authenticate using: 'auth <password>'\n");
                 }

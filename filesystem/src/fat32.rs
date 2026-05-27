@@ -19,7 +19,7 @@ impl Fat32Simulator {
 
     pub fn read_file(&self, path: &str) -> Result<String, String> {
         match path {
-            "SYSTEM.TXT" => Ok("NovaSchool OS FAT32 Boot Recovery Partition\nStatus: OK\nVersion: 0.1.0\n".to_string()),
+            "SYSTEM.TXT" => Ok("NovaOS FAT32 Boot Recovery Partition\nStatus: OK\nVersion: 0.1.0\n".to_string()),
             "EFI/BOOT/BOOTX64.EFI" => Ok("[Binary EFI Payload]".to_string()),
             "KERNEL.BIN" => Ok("[Kernel executable payload]".to_string()),
             _ => Err("File not found on FAT32 partition".to_string()),

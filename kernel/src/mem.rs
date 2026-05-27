@@ -276,3 +276,17 @@ pub fn get_memory_snapshot() -> (Vec<FrameOwner>, HashMap<u32, usize>) {
         (Vec::new(), HashMap::new())
     }
 }
+
+pub fn get_frame_mapping(frame_id: u32) -> Option<(u32, u64, bool)> {
+    let mm_lock = MM.lock().unwrap();
+    if let Some(ref mm) = *mm_lock {
+        for (&pid, table) in &mm.process_page_tables {
+            for (&vaddr, entry) in table {
+                if entry.frame_id == frame_id {
+                    return Some((pid, vaddr, entry.writable));
+                }
+            }
+        }
+    }
+    None
+}

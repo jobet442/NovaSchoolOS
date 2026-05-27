@@ -9,14 +9,14 @@ impl NovaAssistant {
         let mut kb = HashMap::new();
         
         kb.insert("scheduler".to_string(), 
-            "NovaSchool OS uses three scheduler policies:\n\
+            "NovaOS uses three scheduler policies:\n\
             1. Round-Robin: Cycles through ready PIDs giving equal slice (ticks).\n\
             2. Priority: Selects process with highest Priority enum (RealTime > High > Normal).\n\
             3. Real-Time: RT processes preempt all normal/low priority tasks instantly.\n\
             Tip: Use the scheduler configuration panel to swap policies and watch ticks run!".to_string());
             
         kb.insert("memory".to_string(), 
-            "Virtual memory in NovaSchool OS is structured as a 2-Level page table directory.\n\
+            "Virtual memory in NovaOS is structured as a 2-Level page table directory.\n\
             - Page Size: 4096 bytes (4 KB).\n\
             - Physical RAM: 128 MB mapped into 32,768 physical page frames.\n\
             - Page Faults (Vector 14): Triggered on access violations or during Copy-On-Write (COW).\n\
@@ -40,12 +40,30 @@ impl NovaAssistant {
             - sys_socket (7): Binds network ports for network sockets.\n\
             When executing commands in the shell, watch the Syscall Log panel to inspect the flow in real-time!".to_string());
 
+        kb.insert("ipc".to_string(), 
+            "Inter-Process Communication (IPC) allows processes to exchange messages.\n\
+            NovaOS implements Message Queues via:\n\
+            - sys_mq_send (8): Sends a message packet to a named queue.\n\
+            - sys_mq_recv (9): Receives a message packet (FIFO).\n\
+            Use the IPC Monitor tab to watch active queues and messages!".to_string());
+
+        kb.insert("mutex".to_string(), 
+            "Mutexes (mutual exclusion) serialize access to shared locks:\n\
+            - sys_mutex_lock (11): Locks a mutex, blocking the process if it's already held.\n\
+            - sys_mutex_unlock (12): Unlocks a mutex, waking up the next process in the wait queue.".to_string());
+
+        kb.insert("deadlock".to_string(), 
+            "A Deadlock occurs when multiple processes hold locks while waiting on locks held by others.\n\
+            The kernel includes automatic cycle detection (deadlock detector).\n\
+            Run 'deadlock_demo' to simulate, and use the Mutex tab to resolve it by terminating a process.".to_string());
+
         kb.insert("help".to_string(), 
             "I can explain operating system concepts. Ask me about:\n\
             - 'scheduler' (Round-robin, priorities)\n\
             - 'memory' or 'paging' (Page tables, frames, COW, page faults)\n\
             - 'novafs' or 'filesystem' (Inodes, journal logs, snapshots, quotas)\n\
             - 'syscall' (POSIX transitions, sys_fork, sys_write)\n\
+            - 'ipc' or 'mutex' or 'deadlock' (Message queues, lock ownership, Dining Philosophers)\n\
             - Or ask about commands like 'ls', 'cat', 'grep', 'novapkg'!".to_string());
 
         kb.insert("ls".to_string(), "ls: Lists directory contents. In VFS, directories can be on NovaFS, FAT32, or EXT2 partitions.".to_string());

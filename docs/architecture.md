@@ -1,6 +1,6 @@
-# NovaSchool OS - Architecture Design
+# NovaOS - Architecture Design
 
-NovaSchool OS is designed with a hybrid microkernel-inspired Unix-like architecture. The system exposes modular abstraction boundaries so students can study kernel internals in isolation.
+NovaOS is designed with a hybrid microkernel-inspired Unix-like architecture. The system exposes modular abstraction boundaries so students can study kernel internals in isolation.
 
 ```mermaid
 graph TD
@@ -18,7 +18,7 @@ graph TD
         sys_kill[sys_kill]
     end
 
-    subgraph Kernel ["NovaSchool Hybrid Kernel"]
+    subgraph Kernel ["NovaOS Hybrid Kernel"]
         direction TB
         scheduler[Preemptive CPU Scheduler<br>Round-Robin | Priority | RT]
         mem[Virtual Memory Manager<br>Page Tables | COW | Frame Allocator]

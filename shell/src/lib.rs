@@ -5,7 +5,7 @@ static SHELL_CURRENT_DIR: Mutex<Option<String>> = Mutex::new(None);
 static ENVIRONMENT_VARIABLES: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 pub fn init_shell() {
-    *SHELL_CURRENT_DIR.lock().unwrap() = Some("/students/student1001".to_string());
+    *SHELL_CURRENT_DIR.lock().unwrap() = Some("/students/student1".to_string());
     
     let mut env = HashMap::new();
     env.insert("PATH".to_string(), "/bin:/usr/bin".to_string());
@@ -98,7 +98,7 @@ fn run_single_command(cmd_line: &str, pipe_input: &str) -> String {
         // --- BUILTINS ---
         "help" => {
             let mut out = String::new();
-            out.push_str("NovaSchool OS - Shell Builtin Commands:\n");
+            out.push_str("NovaOS - Shell Builtin Commands:\n");
             out.push_str("  help                    Display this list\n");
             out.push_str("  cd <path>               Change directory\n");
             out.push_str("  pwd                     Print working directory\n");
@@ -112,6 +112,16 @@ fn run_single_command(cmd_line: &str, pipe_input: &str) -> String {
             out.push_str("  quota                   Inspect disk storage quota\n");
             out.push_str("  snapshot <create|restore> <id>  Restore OS filesystem backups\n");
             out.push_str("  novapkg install/remove/list     Manage applications\n");
+            out.push_str("\nInter-Process Communication (IPC):\n");
+            out.push_str("  mq_send <qname> <msg>   Send message to queue\n");
+            out.push_str("  mq_recv <qname>         Receive message from queue\n");
+            out.push_str("  mq_list                 List active message queues\n");
+            out.push_str("\nConcurrency & Mutexes:\n");
+            out.push_str("  mutex_create <name>     Create a new lock\n");
+            out.push_str("  mutex_lock <id>         Acquire a lock\n");
+            out.push_str("  mutex_unlock <id>       Release a lock\n");
+            out.push_str("  deadlock_demo           Simulate Dining Philosophers deadlock\n");
+            out.push_str("  deadlock_resolve        Resolve the deadlock cycle\n");
             out
         }
         "cd" => {
@@ -149,12 +159,7 @@ fn run_single_command(cmd_line: &str, pipe_input: &str) -> String {
             }
             match userspace::login_user(&args[0], &args[1]) {
                 Ok(u) => {
-                    if let Some(env) = ENVIRONMENT_VARIABLES.lock().unwrap().as_mut() {
-                        env.insert("USER".to_string(), u.username.clone());
-                    }
-                    // Reset home path
-                    let home = if u.uid == 0 { "/".to_string() } else { format!("/students/student{}", u.uid) };
-                    *SHELL_CURRENT_DIR.lock().unwrap() = Some(home);
+                    update_shell_session(&u.username, u.uid);
                     format!("Logged in successfully as {}.\n", u.username)
                 }
                 Err(e) => format!("Login failed: {}\n", e),
@@ -316,7 +321,7 @@ fn run_single_command(cmd_line: &str, pipe_input: &str) -> String {
             // Interactive Process top simulation (yields output once)
             let list = kernel::task::get_process_list();
             let mut out = String::new();
-            out.push_str("NovaSchool OS Top Monitor:\n");
+            out.push_str("NovaOS Top Monitor:\n");
             out.push_str("Active processes list (sorted by ticks):\n");
             out.push_str("PID   STATE     TICKS  COMMAND\n");
             let mut active = list;
@@ -442,11 +447,114 @@ fn run_single_command(cmd_line: &str, pipe_input: &str) -> String {
             }
         }
 
+        // --- IPC MESSAGE QUEUES ---
+        "mq_send" => {
+            if args.len() < 2 {
+                return "Usage: mq_send <queue_name> <message>".to_string();
+            }
+            let qname = &args[0];
+            let msg = args[1..].join(" ");
+            
+            let _ = kernel::ipc::create_queue(qname);
+            let _ = kernel::syscall::sys_call(8, qname.len() as u64, msg.len() as u64, 0);
+            
+            match kernel::ipc::send_message(qname, msg) {
+                Ok(_) => format!("Sent message to queue '{}'.\n", qname),
+                Err(e) => format!("mq_send failed: {}\n", e),
+            }
+        }
+        "mq_recv" => {
+            if args.is_empty() {
+                return "Usage: mq_recv <queue_name>".to_string();
+            }
+            let qname = &args[0];
+            
+            let _ = kernel::syscall::sys_call(9, qname.len() as u64, 0, 0);
+            
+            match kernel::ipc::recv_message(qname) {
+                Ok(Some(msg)) => format!("Received: {}\n", msg),
+                Ok(None) => "No messages in queue.\n".to_string(),
+                Err(e) => format!("mq_recv failed: {}\n", e),
+            }
+        }
+        "mq_list" => {
+            let queues = kernel::ipc::get_queues();
+            if queues.is_empty() {
+                "No active message queues.\n".to_string()
+            } else {
+                let mut out = String::new();
+                out.push_str("Active message queues:\n");
+                for (name, count, _) in queues {
+                    out.push_str(&format!("  - '{}' ({} messages pending)\n", name, count));
+                }
+                out
+            }
+        }
+
+        // --- CONCURRENCY & MUTEXES ---
+        "mutex_create" => {
+            if args.is_empty() {
+                return "Usage: mutex_create <name>".to_string();
+            }
+            let name = &args[0];
+            
+            let hash = name.len() as u64;
+            let _ = kernel::syscall::sys_call(10, hash, 0, 0);
+            
+            match kernel::mutex::create_mutex(name) {
+                Ok(id) => format!("Mutex '{}' created with ID {}.\n", name, id),
+                Err(e) => format!("mutex_create failed: {}\n", e),
+            }
+        }
+        "mutex_lock" => {
+            if args.is_empty() {
+                return "Usage: mutex_lock <id>".to_string();
+            }
+            let id = match args[0].parse::<u32>() {
+                Ok(n) => n,
+                Err(_) => return "Invalid mutex ID".to_string(),
+            };
+            
+            let pid = kernel::task::get_current_pid();
+            match kernel::syscall::sys_call(11, id as u64, 0, 0) {
+                Ok(1) => format!("Mutex {} locked by process PID {}.\n", id, pid),
+                Ok(0) => format!("Mutex {} is busy. Process PID {} is now BLOCKED.\n", id, pid),
+                Ok(other) => format!("Syscall returned: {}\n", other),
+                Err(e) => format!("mutex_lock failed: {}\n", e),
+            }
+        }
+        "mutex_unlock" => {
+            if args.is_empty() {
+                return "Usage: mutex_unlock <id>".to_string();
+            }
+            let id = match args[0].parse::<u32>() {
+                Ok(n) => n,
+                Err(_) => return "Invalid mutex ID".to_string(),
+            };
+            
+            match kernel::syscall::sys_call(12, id as u64, 0, 0) {
+                Ok(_) => format!("Mutex {} unlocked.\n", id),
+                Err(e) => format!("mutex_unlock failed: {}\n", e),
+            }
+        }
+        "deadlock_demo" => {
+            match kernel::mutex::run_deadlock_simulation() {
+                Ok(_) => "Dining Philosophers simulation started. 3 philosopher tasks blocked. DEADLOCK DETECTED.\n".to_string(),
+                Err(e) => format!("Simulation failed: {}\n", e),
+            }
+        }
+        "deadlock_resolve" => {
+            match kernel::mutex::resolve_deadlock() {
+                Ok(msg) => format!("Deadlock resolved: {}\n", msg),
+                Err(e) => format!("Resolve failed: {}\n", e),
+            }
+        }
+
         // --- QUOTA ---
         "quota" => {
             // Read quotas
             format!(
-                "NovaSchool User Quota limits for UID {}:\n  - Max storage size: 102400 bytes (100 KB)\n  - Current Usage: Active within lab boundary.\n",
+                "NovaOS User Quota limits for UID {}:\n  - Max storage size: 102400 bytes (100 KB)\n  - Current Usage: Active within lab boundary.\n",
                 curr_user.uid
             )
         }
@@ -511,4 +619,17 @@ fn split_arguments(s: &str) -> Vec<String> {
         args.push(arg);
     }
     args
+}
+
+pub fn update_shell_session(username: &str, uid: u32) {
+    let home = if uid == 0 {
+        "/".to_string()
+    } else {
+        format!("/students/{}", username)
+    };
+    *SHELL_CURRENT_DIR.lock().unwrap() = Some(home);
+    
+    if let Some(env) = ENVIRONMENT_VARIABLES.lock().unwrap().as_mut() {
+        env.insert("USER".to_string(), username.to_string());
+    }
 }

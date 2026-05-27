@@ -2,7 +2,7 @@
 name = "novaschool_os"
 version = "0.1.0"
 edition = "2021"
-authors = ["NovaSchool OS Architects"]
+authors = ["NovaOS Architects"]
 description = "A secure, educational, Unix-like operating system in Rust."
 
 [workspace]

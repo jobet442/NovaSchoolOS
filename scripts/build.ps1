@@ -1,5 +1,5 @@
-# Write-Host "NovaSchool OS Developer Toolkit script" -ForegroundColor Cyan
-# This script builds, tests, or launches the NovaSchool OS emulator environment.
+# Write-Host "NovaOS Developer Toolkit script" -ForegroundColor Cyan
+# This script builds, tests, or launches the NovaOS emulator environment.
 
 param (
     [string]$Action = "run" # Action options: build, run, test
@@ -48,11 +48,11 @@ rustup override set nightly-x86_64-pc-windows-gnu
 
 switch ($Action) {
     "build" {
-        Write-Host "Building NovaSchool OS Workspace..." -ForegroundColor Green
+        Write-Host "Building NovaOS Workspace..." -ForegroundColor Green
         cargo build --workspace
     }
     "run" {
-        Write-Host "Booting NovaSchool OS..." -ForegroundColor Green
+        Write-Host "Booting NovaOS..." -ForegroundColor Green
         cargo build
         if ($LASTEXITCODE -eq 0) {
             Start-Process "target\debug\novaschool_os.exe"

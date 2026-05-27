@@ -31,14 +31,14 @@ pub static PHYSICAL_MEM_MAP: [MemoryMapEntry; 8] = [
 
 pub fn print_boot_banner() {
     drivers::vga_println!("=======================================================");
-    drivers::vga_println!("          _   _                 ____       _               _ ");
-    drivers::vga_println!("         | \\ | |               / ___|     | |             | |");
-    drivers::vga_println!("         |  \\| | _____   ____  \\___ \\  ___| |__   ___   __| |");
-    drivers::vga_println!("         | . ` |/ _ \\ \\ / / _` |___) |/ __| '_ \\ / _ \\ / _` |");
-    drivers::vga_println!("         | |\\  | (_) \\ V / (_| |____/| (__| | | | (_) | (_| |");
-    drivers::vga_println!("         |_| \\_|\\___/ \\_/ \\__,_|____/ \\___|_| |_|\\___/ \\__,_|");
+    drivers::vga_println!("       _   _                 ___  ____  ");
+    drivers::vga_println!("      | \\ | |               / _ \\/ ___| ");
+    drivers::vga_println!("      |  \\| | _____   ____ | | | \\___ \\ ");
+    drivers::vga_println!("      | . ` |/ _ \\ \\ / / _` | | | |___) |");
+    drivers::vga_println!("      | |\\  | (_) \\ V / (_| | |_| |____/ ");
+    drivers::vga_println!("      |_| \\_|\\___/ \\_/ \\__,_|\\___/|_____/ ");
     drivers::vga_println!("=======================================================");
-    drivers::vga_println!("                  NovaSchool OS v0.1.0 (x86_64)");
+    drivers::vga_println!("                    NovaOS v0.1.0 (x86_64)");
     drivers::vga_println!("       Initializing hybrid kernel components securely...");
 }
 
@@ -79,6 +79,6 @@ pub fn trigger_kernel_panic(info: &PanicHookInfo) {
     drivers::vga_println!("RIP: 0x000000000020108A   RSP: 0x0000000000400F30   RFLAGS: 0x0000000000010202");
     drivers::vga_println!("RAX: 0x0000000000000000   RBX: 0x00000000002030E0   RCX: 0x0000000000000045");
     drivers::vga_println!("------------------------------------------------------------------------------");
-    drivers::vga_println!("This crash screen is part of NovaSchool OS interactive labs. Students should");
+    drivers::vga_println!("This crash screen is part of NovaOS interactive labs. Students should");
     drivers::vga_println!("analyze CR2 (Page Fault Linear Address) and RIP to trace memory safety issues.");
 }

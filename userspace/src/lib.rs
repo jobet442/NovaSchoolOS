@@ -63,14 +63,31 @@ fn create_classroom_filesystem_layout() {
     let _ = filesystem::vfs_mkdir("/faculty", 0o750, 0);
 
     // Create student workspaces (only owner can modify)
-    let _ = filesystem::vfs_mkdir("/students/student1001", 0o700, 1001);
-    let _ = filesystem::vfs_mkdir("/students/student1002", 0o700, 1002);
+    let _ = filesystem::vfs_mkdir("/students/student1", 0o700, 1001);
+    let _ = filesystem::vfs_mkdir("/students/student2", 0o700, 1002);
 
     // Populate assignments
     let fd = filesystem::vfs_open("/assignments/lab1_instructions.txt", true, true, 0).unwrap();
-    let instructions = "Welcome to Lab 1: Systems Programming.\nTask: Use the redirection commands to write 'Hello NovaSchool' to your students directory.\nUsage: echo 'Hello Nova' > /students/student1001/hello.txt\n";
+    let instructions = "Welcome to Lab 1: Systems Programming.\nTask: Use the redirection commands to write 'Hello NovaOS' to your students directory.\nUsage: echo 'Hello NovaOS' > /students/student1/hello.txt\n";
     let _ = filesystem::vfs_write(fd, instructions.as_bytes(), 0);
     let _ = filesystem::vfs_close(fd);
+}
+
+pub fn apply_installation_setup(root_pass: &str, student_name: &str, student_pass: &str) {
+    let mut db_lock = USER_DATABASE.lock().unwrap();
+    if let Some(ref mut db) = *db_lock {
+        if let Some(root_user) = db.get_mut("root") {
+            root_user.password_hash = root_pass.to_string();
+        }
+        db.remove("student1");
+        db.remove("student2");
+        db.insert(student_name.to_string(), User {
+            uid: 1001,
+            username: student_name.to_string(),
+            password_hash: student_pass.to_string(),
+            groups: vec!["students".to_string()],
+        });
+    }
 }
 
 // Useradd command
@@ -147,4 +164,40 @@ pub fn auto_reset_student_environment(uid: u32) {
     let _ = filesystem::vfs_mkdir(&path, 0o700, uid);
     
     drivers::vga_println!("[Classroom Security] Auto-Reset executed for student UID {}. Workspace clean.", uid);
+}
+
+pub fn save_system_config(lang: &str, kbd: &str, tz: &str) {
+    let _ = filesystem::vfs_mkdir("/etc", 0o755, 0);
+    
+    if let Ok(fd) = filesystem::vfs_open("/etc/lang", true, true, 0) {
+        let _ = filesystem::vfs_write(fd, lang.as_bytes(), 0);
+        let _ = filesystem::vfs_close(fd);
+    }
+    if let Ok(fd) = filesystem::vfs_open("/etc/keyboard", true, true, 0) {
+        let _ = filesystem::vfs_write(fd, kbd.as_bytes(), 0);
+        let _ = filesystem::vfs_close(fd);
+    }
+    if let Ok(fd) = filesystem::vfs_open("/etc/timezone", true, true, 0) {
+        let _ = filesystem::vfs_write(fd, tz.as_bytes(), 0);
+        let _ = filesystem::vfs_close(fd);
+    }
+}
+
+pub fn read_system_config() -> (String, String, String) {
+    let lang = read_file_content_helper("/etc/lang").unwrap_or_else(|_| "English".to_string());
+    let kbd = read_file_content_helper("/etc/keyboard").unwrap_or_else(|_| "US QWERTY".to_string());
+    let tz = read_file_content_helper("/etc/timezone").unwrap_or_else(|_| "UTC".to_string());
+    (lang, kbd, tz)
+}
+
+fn read_file_content_helper(path: &str) -> Result<String, String> {
+    let fd = filesystem::vfs_open(path, false, false, 0)?;
+    let mut buf = vec![0u8; 128];
+    let bytes = filesystem::vfs_read(fd, &mut buf)?;
+    let _ = filesystem::vfs_close(fd);
+    let s = std::str::from_utf8(&buf[0..bytes])
+        .map_err(|e| e.to_string())?
+        .trim()
+        .to_string();
+    Ok(s)
 }

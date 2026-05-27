@@ -1,8 +1,12 @@
 use drivers::init_drivers;
 use filesystem::{init_vfs, vfs_open, vfs_write, vfs_read, vfs_close, vfs_mkdir};
+use std::sync::Mutex;
+
+static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_vfs_mounts_and_file_io() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     // Init drivers and mock disk
     init_drivers();
     init_vfs();
@@ -34,6 +38,7 @@ fn test_vfs_mounts_and_file_io() {
 
 #[test]
 fn test_vfs_quota_limit() {
+    let _lock = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     init_drivers();
     init_vfs();
 

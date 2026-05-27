@@ -1,17 +1,17 @@
 #!/bin/bash
 
-# NovaSchool OS Developer Toolkit script
-# This script builds, tests, or launches the NovaSchool OS emulator environment.
+# NovaOS Developer Toolkit script
+# This script builds, tests, or launches the NovaOS emulator environment.
 
 ACTION=${1:-run}
 
 case "$ACTION" in
     "build")
-        echo "Building NovaSchool OS Workspace..."
+        echo "Building NovaOS Workspace..."
         cargo build --workspace
         ;;
     "run")
-        echo "Booting NovaSchool OS..."
+        echo "Booting NovaOS..."
         cargo run
         ;;
     "test")

@@ -1,6 +1,6 @@
-# NovaSchool OS - System Call Reference
+# NovaOS - System Call Reference
 
-System calls bridge user space applications and the privileged kernel mode. In NovaSchool OS, system calls are intercepted via an Interrupt Descriptor Table vector trap or a software trigger.
+System calls bridge user space applications and the privileged kernel mode. In NovaOS, system calls are intercepted via an Interrupt Descriptor Table vector trap or a software trigger.
 
 ## Syscall Table
 

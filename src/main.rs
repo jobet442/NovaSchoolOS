@@ -39,7 +39,7 @@ fn main() -> Result<(), std::io::Error> {
         println!("Type 'help' to see shell commands. Type 'exit' to quit.\n");
 
         let active_user = userspace::get_current_user().unwrap().username;
-        print!("[{}@novaschool-os]$ ", active_user);
+        print!("[{}@novaos]$ ", active_user);
         std::io::stdout().flush()?;
 
         let stdin = std::io::stdin();
@@ -54,7 +54,7 @@ fn main() -> Result<(), std::io::Error> {
             print!("{}", output);
 
             let active_user = userspace::get_current_user().unwrap().username;
-            print!("[{}@novaschool-os]$ ", active_user);
+            print!("[{}@novaos]$ ", active_user);
             std::io::stdout().flush()?;
             input.clear();
         }

@@ -1,6 +1,6 @@
-# NovaSchool OS - Student Developer Handbook
+# NovaOS - Student Developer Handbook
 
-Welcome, student! This developer handbook provides guides and interactive lab exercises to study operating system internals on NovaSchool OS.
+Welcome, student! This developer handbook provides guides and interactive lab exercises to study operating system internals on NovaOS.
 
 ---
 
@@ -9,7 +9,7 @@ Welcome, student! This developer handbook provides guides and interactive lab ex
 In this lab, we will witness how processes compete for CPU run ticks and how scheduling policies affect multitasking execution.
 
 ### Steps:
-1. Boot NovaSchool OS by running the simulator binary.
+1. Boot NovaOS by running the simulator binary.
 2. Select the **Student Terminal** tab (F1) and run:
    ```bash
    ps

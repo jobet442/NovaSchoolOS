@@ -23,7 +23,7 @@ pub fn init_novapkg() {
     available.insert("libc".to_string(), Package {
         name: "libc".to_string(),
         version: "2.35".to_string(),
-        description: "NovaSchool Standard C Library bindings".to_string(),
+        description: "NovaOS Standard C Library bindings".to_string(),
         dependencies: Vec::new(),
     });
     available.insert("libm".to_string(), Package {
@@ -31,6 +31,20 @@ pub fn init_novapkg() {
         version: "1.0.0".to_string(),
         description: "NovaMath math operations library".to_string(),
         dependencies: Vec::new(),
+    });
+
+    // Add utilities and packages
+    available.insert("shell-utils".to_string(), Package {
+        name: "shell-utils".to_string(),
+        version: "1.0.0".to_string(),
+        description: "Core CLI utilities for filesystem interaction (pwd, cd, mkdir, cat)".to_string(),
+        dependencies: vec!["libc".to_string()],
+    });
+    available.insert("network-tools".to_string(), Package {
+        name: "network-tools".to_string(),
+        version: "1.0.0".to_string(),
+        description: "Network card stack interface tools (ping, sshd, socket)".to_string(),
+        dependencies: vec!["libc".to_string()],
     });
 
     // Add compilers and interpreters
@@ -68,7 +82,7 @@ pub fn install_package(name: &str) -> Result<Vec<String>, String> {
     let db = db_lock.as_mut().ok_or("Package manager not initialized")?;
 
     if !db.available_packages.contains_key(name) {
-        return Err(format!("Package '{}' not found in NovaSchool OS repository", name));
+        return Err(format!("Package '{}' not found in NovaOS repository", name));
     }
 
     if db.installed_packages.contains(name) {

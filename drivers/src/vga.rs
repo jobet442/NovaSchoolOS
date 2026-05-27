@@ -68,6 +68,13 @@ impl VgaWriter {
                 buffer[offset] = byte;
                 buffer[offset + 1] = self.color_code.0;
 
+                #[cfg(target_os = "none")]
+                unsafe {
+                    let ptr = (0xb8000 + offset) as *mut u8;
+                    core::ptr::write_volatile(ptr, byte);
+                    core::ptr::write_volatile(ptr.add(1), self.color_code.0);
+                }
+
                 *cursor = (row, col + 1);
             }
         }
@@ -111,6 +118,14 @@ impl VgaWriter {
                 buffer[clear_offset + i * 2 + 1] = self.color_code.0;
             }
             *cursor = (VGA_HEIGHT - 1, 0);
+
+            #[cfg(target_os = "none")]
+            unsafe {
+                let ptr = 0xb8000 as *mut u8;
+                for i in 0..VGA_BUFFER_SIZE {
+                    core::ptr::write_volatile(ptr.add(i), buffer[i]);
+                }
+            }
         }
     }
 
@@ -123,6 +138,14 @@ impl VgaWriter {
             buffer[i * 2 + 1] = self.color_code.0;
         }
         *cursor = (0, 0);
+
+        #[cfg(target_os = "none")]
+        unsafe {
+            let ptr = 0xb8000 as *mut u8;
+            for i in 0..VGA_BUFFER_SIZE {
+                core::ptr::write_volatile(ptr.add(i), buffer[i]);
+            }
+        }
     }
 }
 

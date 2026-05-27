@@ -110,6 +110,35 @@ pub fn sys_call(id: u32, arg1: u64, arg2: u64, arg3: u64) -> Result<u64, String>
             networking::tcp::bind_socket(port)?;
             Ok(0)
         }
+        8 => {
+            name = "sys_mq_send";
+            // arg1: queue name hash, arg2: message length
+            Ok(0)
+        }
+        9 => {
+            name = "sys_mq_recv";
+            // arg1: queue name hash
+            Ok(0)
+        }
+        10 => {
+            name = "sys_mutex_create";
+            // arg1: name hash
+            Ok(arg1)
+        }
+        11 => {
+            name = "sys_mutex_lock";
+            // arg1: mutex_id
+            let mutex_id = arg1 as u32;
+            let acquired = super::mutex::lock_mutex(mutex_id, pid)?;
+            Ok(if acquired { 1 } else { 0 })
+        }
+        12 => {
+            name = "sys_mutex_unlock";
+            // arg1: mutex_id
+            let mutex_id = arg1 as u32;
+            super::mutex::unlock_mutex(mutex_id, pid)?;
+            Ok(0)
+        }
         _ => {
             name = "sys_unknown";
             Err(format!("Unknown syscall identifier: {}", id))

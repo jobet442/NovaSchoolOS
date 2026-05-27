@@ -157,7 +157,7 @@ pub fn start_tui_environment() -> Result<(), io::Error> {
                                     
                                     // Print prompt line
                                     let active_user = userspace::get_current_user().unwrap().username;
-                                    drivers::vga_print!("[{}@novaschool-os]$ ", active_user);
+                                    drivers::vga_print!("[{}@novaos]$ ", active_user);
                                 }
                                 _ => {}
                             }
@@ -264,7 +264,7 @@ fn draw_dashboard(f: &mut ratatui::Frame, _assistant: &assistant::NovaAssistant)
         " [F5] Security Auditor "
     ];
     let tabs = Tabs::new(tab_titles)
-        .block(Block::default().borders(Borders::ALL).title(" NovaSchool OS Dashboard "))
+        .block(Block::default().borders(Borders::ALL).title(" NovaOS Dashboard "))
         .select(active)
         .style(Style::default().fg(Color::Cyan))
         .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
@@ -338,7 +338,7 @@ fn draw_vga_console(f: &mut ratatui::Frame, area: Rect) {
     let lock_status = if classroom::is_terminal_locked() {
         " [TERMINAL LOCKED - PRESS CTRL+C TO OVERRIDE] "
     } else {
-        " [NovaSchool Interactive Terminal] "
+        " [NovaOS Interactive Terminal] "
     };
 
     let block = Block::default()
@@ -415,7 +415,7 @@ fn draw_teacher_dashboard_tab(f: &mut ratatui::Frame, area: Rect) {
         .split(area);
 
     let info_text = vec![
-        Line::from(Span::styled("NovaSchool Classroom Dashboard Controls:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled("NovaOS Classroom Dashboard Controls:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
         Line::from(Span::raw("")),
         Line::from("Type one of the following commands in prompt below to test teacher features:"),
         Line::from(vec![
@@ -556,13 +556,13 @@ pub fn start_gui_environment() -> Result<(), std::io::Error> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("NovaSchool OS Kernel")
+            .with_title("NovaOS Kernel")
             .with_inner_size([1280.0, 620.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "NovaSchool OS",
+        "NovaOS",
         options,
         Box::new(|_cc| Box::new(gui_app::NovaGuiApp::new())),
     ).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;

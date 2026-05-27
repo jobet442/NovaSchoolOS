@@ -21,8 +21,43 @@ pub enum TeacherTab {
     SecurityAuditor,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VisualizerSubTab {
+    Processes,
+    MemoryGrid,
+    IpcMonitor,
+    MutexLocks,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallerStep {
+    Welcome,
+    DiskPartitioning,
+    PackageSelection,
+    Installing,
+    SetupLanguage,
+    SetupKeyboard,
+    SetupTimezone,
+    SetupAccounts,
+    Success,
+}
+
 pub struct NovaGuiApp {
     active_tab: Tab,
+    visualizer_sub_tab: VisualizerSubTab,
+    is_installed: bool,
+    installer_step: InstallerStep,
+    installer_progress: f32,
+    installer_student_user: String,
+    installer_student_pass: String,
+    installer_student_pass_confirm: String,
+    installer_selected_packages: std::collections::HashSet<String>,
+    installer_partition_size: f32,
+    setup_language: String,
+    setup_keyboard: String,
+    setup_timezone: String,
+    setup_error: Option<String>,
+    memory_start_frame: usize,
     assistant_agent: assistant::NovaAssistant,
     announcement_input: String,
     chat_input: String,
@@ -57,8 +92,30 @@ impl NovaGuiApp {
         // Force logout on boot so the system starts at the login screen
         userspace::logout_user();
 
+        let available = userspace::novapkg::get_all_available();
+        let mut default_packages = std::collections::HashSet::new();
+        for pkg in available {
+            if pkg.name != "libc" && pkg.name != "libm" {
+                default_packages.insert(pkg.name);
+            }
+        }
+
         NovaGuiApp {
             active_tab: Tab::KernelVisualizer,
+            visualizer_sub_tab: VisualizerSubTab::Processes,
+            is_installed: false,
+            installer_step: InstallerStep::Welcome,
+            installer_progress: 0.0,
+            installer_student_user: String::new(),
+            installer_student_pass: String::new(),
+            installer_student_pass_confirm: String::new(),
+            installer_selected_packages: default_packages,
+            installer_partition_size: 64.0,
+            setup_language: "English".to_string(),
+            setup_keyboard: "US QWERTY".to_string(),
+            setup_timezone: "UTC".to_string(),
+            setup_error: None,
+            memory_start_frame: 4096,
             assistant_agent: assistant::NovaAssistant::new(),
             announcement_input: String::new(),
             chat_input: String::new(),
@@ -82,6 +139,11 @@ impl eframe::App for NovaGuiApp {
         let mut visuals = egui::Visuals::dark();
         visuals.panel_fill = egui::Color32::BLACK;
         ctx.set_visuals(visuals);
+
+        if !self.is_installed {
+            self.draw_installer_wizard(ctx);
+            return;
+        }
 
         // Check if userspace logged out (i.e. CURRENT_SESSION_USER set to None via terminal logout command)
         let current_user = userspace::get_current_user();
@@ -147,7 +209,7 @@ impl eframe::App for NovaGuiApp {
                                         
                                         // Print prompt line
                                         let active_user = userspace::get_current_user().unwrap().username;
-                                        drivers::vga_print!("[{}@novaschool-os]$ ", active_user);
+                                        drivers::vga_print!("[{}@novaos]$ ", active_user);
                                     }
                                     _ => {}
                                 }
@@ -176,7 +238,7 @@ impl eframe::App for NovaGuiApp {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.heading(
-                        egui::RichText::new("🚀 NovaSchool Operating System Kernel")
+                        egui::RichText::new("🚀 NovaOS Operating System Kernel")
                             .size(22.0)
                             .strong()
                             .color(egui::Color32::from_rgb(0, 220, 255))
@@ -187,6 +249,9 @@ impl eframe::App for NovaGuiApp {
                         "Interactive Kernel & Userspace".to_string()
                     };
                     ui.label(egui::RichText::new(user_label).italics().color(egui::Color32::GRAY));
+                    
+                    let (lang, kbd, tz) = userspace::read_system_config();
+                    ui.label(egui::RichText::new(format!("🌐 Language: {}  |  ⌨ Keyboard: {}  |  🕒 Timezone: {}", lang, kbd, tz)).color(egui::Color32::from_rgb(100, 180, 100)).small());
                 });
                 
                 if is_admin {
@@ -312,7 +377,7 @@ impl eframe::App for NovaGuiApp {
             ctx.show_viewport_immediate(
                 egui::ViewportId::from_hash_of("teacher_dashboard"),
                 egui::ViewportBuilder::default()
-                    .with_title("NovaSchool OS - Teacher & Admin Panel")
+                    .with_title("NovaOS - Teacher & Admin Panel")
                     .with_inner_size([750.0, 550.0])
                     .with_close_button(true),
                 |ctx, class| {
@@ -335,6 +400,33 @@ impl eframe::App for NovaGuiApp {
 
 impl NovaGuiApp {
     fn draw_kernel_visualizer(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.visualizer_sub_tab, VisualizerSubTab::Processes, "🧵 Tasks & VFS");
+            ui.selectable_value(&mut self.visualizer_sub_tab, VisualizerSubTab::MemoryGrid, "📟 Memory Map");
+            ui.selectable_value(&mut self.visualizer_sub_tab, VisualizerSubTab::IpcMonitor, "✉️ IPC Monitor");
+            ui.selectable_value(&mut self.visualizer_sub_tab, VisualizerSubTab::MutexLocks, "🔒 Mutex Locks");
+        });
+        ui.add_space(4.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        match self.visualizer_sub_tab {
+            VisualizerSubTab::Processes => {
+                self.draw_processes_visualizer(ui);
+            }
+            VisualizerSubTab::MemoryGrid => {
+                self.draw_memory_grid_visualizer(ui);
+            }
+            VisualizerSubTab::IpcMonitor => {
+                self.draw_ipc_monitor_visualizer(ui);
+            }
+            VisualizerSubTab::MutexLocks => {
+                self.draw_mutex_locks_visualizer(ui);
+            }
+        }
+    }
+
+    fn draw_processes_visualizer(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             // Process PCB Table
             ui.label(egui::RichText::new("Process Control Block (PCB) Table").strong().color(egui::Color32::from_rgb(0, 220, 255)));
@@ -553,6 +645,244 @@ impl NovaGuiApp {
         });
     }
 
+    fn draw_memory_grid_visualizer(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Physical Memory Frame Visualizer").strong().color(egui::Color32::from_rgb(0, 220, 255)));
+        ui.label(egui::RichText::new(format!("A dynamic representation of 512 physical page frames starting at frame {}.", self.memory_start_frame)).small().color(egui::Color32::GRAY));
+        ui.add_space(6.0);
+
+        let (frames, _) = kernel::mem::get_memory_snapshot();
+        
+        ui.horizontal(|ui| {
+            ui.label("Select Start Frame:");
+            ui.add(egui::Slider::new(&mut self.memory_start_frame, 0..=32256).step_by(32.0));
+        });
+        ui.add_space(6.0);
+        
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Legend:").strong().small());
+            ui.horizontal_wrapped(|ui| {
+                ui.style_mut().spacing.item_spacing.x = 8.0;
+                ui.label(egui::RichText::new("■ Free").color(egui::Color32::from_rgb(45, 45, 45)));
+                ui.label(egui::RichText::new("■ Kernel").color(egui::Color32::from_rgb(80, 80, 80)));
+                ui.label(egui::RichText::new("■ COW Page").color(egui::Color32::from_rgb(255, 75, 75)));
+                
+                let processes = kernel::task::get_process_list();
+                for p in processes.iter().filter(|p| p.state != kernel::task::ProcessState::Killed) {
+                    let color = match p.pid {
+                        1 => egui::Color32::from_rgb(50, 205, 50),
+                        2 => egui::Color32::from_rgb(30, 144, 255),
+                        3 => egui::Color32::from_rgb(255, 215, 0),
+                        _ => {
+                            let pid = p.pid;
+                            let r = ((pid * 13) % 200 + 55) as u8;
+                            let g = ((pid * 27) % 200 + 55) as u8;
+                            let b = ((pid * 43) % 200 + 55) as u8;
+                            egui::Color32::from_rgb(r, g, b)
+                        }
+                    };
+                    ui.label(egui::RichText::new(format!("■ PID {} ({})", p.pid, p.name)).color(color));
+                }
+            });
+        });
+        ui.add_space(10.0);
+
+        egui::Frame::canvas(ui.style())
+            .fill(egui::Color32::BLACK)
+            .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(45, 45, 45)))
+            .rounding(4.0)
+            .inner_margin(8.0)
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.style_mut().spacing.item_spacing.y = 3.0;
+                    let start_frame = self.memory_start_frame;
+                    for row in 0..16 {
+                        ui.horizontal(|ui| {
+                            ui.style_mut().spacing.item_spacing.x = 3.0;
+                            for col in 0..32 {
+                                let frame_id = start_frame + (row * 32 + col);
+                                if frame_id < frames.len() {
+                                    let owner = &frames[frame_id];
+                                    let color = match owner {
+                                        kernel::mem::FrameOwner::Free => egui::Color32::from_rgb(25, 25, 25),
+                                        kernel::mem::FrameOwner::Kernel => egui::Color32::from_rgb(80, 80, 80),
+                                        kernel::mem::FrameOwner::Process(pid) => {
+                                            match pid {
+                                                1 => egui::Color32::from_rgb(50, 205, 50),
+                                                2 => egui::Color32::from_rgb(30, 144, 255),
+                                                3 => egui::Color32::from_rgb(255, 215, 0),
+                                                _ => {
+                                                    let r = ((pid * 13) % 200 + 55) as u8;
+                                                    let g = ((pid * 27) % 200 + 55) as u8;
+                                                    let b = ((pid * 43) % 200 + 55) as u8;
+                                                    egui::Color32::from_rgb(r, g, b)
+                                                }
+                                            }
+                                        }
+                                        kernel::mem::FrameOwner::Shared => egui::Color32::from_rgb(0, 255, 255),
+                                        kernel::mem::FrameOwner::Cow(_) => egui::Color32::from_rgb(255, 75, 75),
+                                    };
+
+                                    let rect_size = egui::vec2(13.0, 13.0);
+                                    let (rect, response) = ui.allocate_exact_size(rect_size, egui::Sense::hover());
+                                    
+                                    ui.painter().rect_filled(rect, egui::Rounding::same(2.0), color);
+                                    
+                                    if response.hovered() {
+                                        ui.painter().rect_stroke(rect, egui::Rounding::same(2.0), egui::Stroke::new(1.5_f32, egui::Color32::WHITE));
+                                        
+                                        let owner_str = match owner {
+                                            kernel::mem::FrameOwner::Free => "Free (Available)".to_string(),
+                                            kernel::mem::FrameOwner::Kernel => "Reserved by Kernel".to_string(),
+                                            kernel::mem::FrameOwner::Process(pid) => format!("Allocated to PID {}", pid),
+                                            kernel::mem::FrameOwner::Shared => "Shared System Frame".to_string(),
+                                            kernel::mem::FrameOwner::Cow(pid) => format!("Copy-on-Write Reference (Parent: PID {})", pid),
+                                        };
+
+                                        let mapping_info = if let Some((pid, vaddr, writable)) = kernel::mem::get_frame_mapping(frame_id as u32) {
+                                            format!("\nMapped in Page Table: PID {}\nVirtual Address: 0x{:X}\nWritable: {}", pid, vaddr, writable)
+                                        } else {
+                                            "\nNo active virtual mapping (cached/unmapped)".to_string()
+                                        };
+
+                                        response.on_hover_text(format!(
+                                            "Frame ID: {}\nOwner Status: {}{}",
+                                            frame_id, owner_str, mapping_info
+                                        ));
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+    }
+
+    fn draw_ipc_monitor_visualizer(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Inter-Process Communication (IPC) Monitor").strong().color(egui::Color32::from_rgb(0, 220, 255)));
+        ui.label(egui::RichText::new("Inspect message queue descriptors and trace message packet transmissions:").small().color(egui::Color32::GRAY));
+        ui.add_space(8.0);
+
+        let queues = kernel::ipc::get_queues();
+        if queues.is_empty() {
+            ui.group(|ui| {
+                ui.set_width(ui.available_width());
+                ui.label(egui::RichText::new("No active IPC message queues.").italics().color(egui::Color32::GRAY));
+                ui.label("Use command 'mq_send <qname> <message>' in student terminal to create message queues.");
+            });
+        } else {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (name, count, messages) in queues {
+                    ui.group(|ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("✉️ Queue: '{}'", name)).strong().color(egui::Color32::from_rgb(255, 220, 100)));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(egui::RichText::new(format!("{} messages pending", count)).color(egui::Color32::LIGHT_BLUE));
+                            });
+                        });
+                        ui.add_space(4.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        
+                        if messages.is_empty() {
+                            ui.label(egui::RichText::new("  (Queue is empty)").italics().small().color(egui::Color32::GRAY));
+                        } else {
+                            ui.label(egui::RichText::new("Message Buffer (FIFO):").small().strong().color(egui::Color32::GRAY));
+                            for (idx, msg) in messages.iter().enumerate() {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("  [{}]", idx)).color(egui::Color32::DARK_GRAY));
+                                    ui.label(msg);
+                                });
+                            }
+                        }
+                    });
+                    ui.add_space(6.0);
+                }
+            });
+        }
+    }
+
+    fn draw_mutex_locks_visualizer(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Mutex & Concurrency Locks Monitor").strong().color(egui::Color32::from_rgb(0, 220, 255)));
+        ui.label(egui::RichText::new("View simulated mutex objects, ownership statuses, and waiter queues:").small().color(egui::Color32::GRAY));
+        ui.add_space(8.0);
+
+        if let Some(cycle) = kernel::mutex::detect_deadlock() {
+            egui::Frame::none()
+                .fill(egui::Color32::from_rgb(50, 0, 0))
+                .stroke(egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(255, 50, 50)))
+                .rounding(6.0)
+                .inner_margin(12.0)
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("⚠️ CONCURRENCY DEADLOCK DETECTED!").strong().color(egui::Color32::from_rgb(255, 100, 100)).size(16.0));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let resolve_btn = egui::Button::new(
+                                    egui::RichText::new("⚡ Resolve Deadlock").strong().color(egui::Color32::BLACK)
+                                ).fill(egui::Color32::from_rgb(255, 200, 50));
+                                if ui.add(resolve_btn).clicked() {
+                                    let _ = kernel::mutex::resolve_deadlock();
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+                        
+                        let cycle_str = cycle.iter().map(|pid| format!("PID {}", pid)).collect::<Vec<_>>().join(" ➔ ");
+                        ui.label(format!("Dependency cycle: {} ➔ PID {}", cycle_str, cycle[0]));
+                        ui.label(egui::RichText::new("Processes in this cycle are indefinitely blocked waiting for chopsticks/resources held by each other. Click 'Resolve' to kill a process and break the deadlock.").small().color(egui::Color32::GRAY));
+                    });
+                });
+            ui.add_space(10.0);
+        }
+
+        let mutexes = kernel::mutex::get_mutexes();
+        if mutexes.is_empty() {
+            ui.group(|ui| {
+                ui.set_width(ui.available_width());
+                ui.label(egui::RichText::new("No active Mutex locks.").italics().color(egui::Color32::GRAY));
+                ui.label("Use command 'deadlock_demo' or 'mutex_create <name>' to test lock synchronization.");
+            });
+        } else {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for m in mutexes {
+                    ui.group(|ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("🔒 Mutex (ID: {}): '{}'", m.id, m.name)).strong().color(egui::Color32::from_rgb(255, 220, 100)));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                match m.owner {
+                                    Some(owner_pid) => {
+                                        ui.label(egui::RichText::new(format!("Held by: PID {}", owner_pid)).color(egui::Color32::from_rgb(255, 100, 100)).strong());
+                                    }
+                                    None => {
+                                        ui.label(egui::RichText::new("Unassigned (Unlocked)").color(egui::Color32::from_rgb(100, 255, 100)));
+                                    }
+                                }
+                            });
+                        });
+                        
+                        ui.add_space(4.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Wait Queue:").strong().small().color(egui::Color32::GRAY));
+                            if m.waiters.is_empty() {
+                                ui.label(egui::RichText::new("None (No processes waiting)").italics().small().color(egui::Color32::DARK_GRAY));
+                            } else {
+                                let waiter_list = m.waiters.iter().map(|pid| format!("PID {}", pid)).collect::<Vec<_>>().join(", ");
+                                ui.label(egui::RichText::new(waiter_list).color(egui::Color32::LIGHT_BLUE).strong());
+                            }
+                        });
+                    });
+                    ui.add_space(6.0);
+                }
+            });
+        }
+    }
+
     fn draw_syscall_explorer(&mut self, ui: &mut egui::Ui) {
         ui.label(egui::RichText::new("POSIX Syscall Trace Explorer").strong().color(egui::Color32::from_rgb(0, 220, 255)));
         ui.label(egui::RichText::new("Recent syscall interface invocations logs:").small().color(egui::Color32::GRAY));
@@ -746,7 +1076,7 @@ impl NovaGuiApp {
         ui.vertical(|ui| {
             ui.add_space(8.0);
             ui.heading(
-                egui::RichText::new("👨‍🏫 NovaSchool OS Teacher & Admin Panel")
+                egui::RichText::new("👨‍🏫 NovaOS Teacher & Admin Panel")
                     .size(20.0)
                     .strong()
                     .color(egui::Color32::from_rgb(255, 220, 100))
@@ -796,7 +1126,7 @@ impl NovaGuiApp {
                 
                 // OS Name
                 ui.heading(
-                    egui::RichText::new("NovaSchool OS")
+                    egui::RichText::new("NovaOS")
                         .size(32.0)
                         .strong()
                         .color(egui::Color32::from_rgb(0, 220, 255))
@@ -877,16 +1207,20 @@ impl NovaGuiApp {
                                     self.login_error = Some("Please fill in all fields".to_string());
                                 } else {
                                     match userspace::login_user(&self.login_username, &self.login_password) {
-                                        Ok(_) => {
+                                        Ok(u) => {
                                             self.is_authenticated = true;
                                             self.login_error = None;
+                                            
+                                            // Update the shell session details dynamically
+                                            shell::update_shell_session(&u.username, u.uid);
+                                            
                                             // Reset the VGA console so it starts with a clean shell prompt
                                             drivers::vga::init_vga();
                                             kernel::boot::print_boot_banner();
                                             kernel::boot::print_uefi_memory_map();
                                             drivers::vga_println!("Type 'help' to see shell commands. Nav tab views using tabs on the right.");
-                                            let active_user = userspace::get_current_user().unwrap().username;
-                                            drivers::vga_print!("[{}@novaschool-os]$ ", active_user);
+                                            let active_user = u.username.clone();
+                                            drivers::vga_print!("[{}@novaos]$ ", active_user);
                                         }
                                         Err(e) => {
                                             self.login_error = Some(e);
@@ -905,7 +1239,9 @@ impl NovaGuiApp {
                         });
                     });
                 
-                ui.add_space(30.0);
+                let (lang, kbd, tz) = userspace::read_system_config();
+                ui.label(egui::RichText::new(format!("🌐 System Locale: {}  |  ⌨ Keyboard: {}  |  🕒 Timezone: {}", lang, kbd, tz)).color(egui::Color32::from_rgb(100, 160, 100)).small());
+                ui.add_space(16.0);
                 
                 // Faculty/Student default credentials help labels to guide users
                 ui.horizontal_wrapped(|ui| {
@@ -1016,5 +1352,401 @@ fn vga_color_to_egui(color_val: u8) -> egui::Color32 {
         13 => egui::Color32::from_rgb(255, 85, 255),   // Pink
         14 => egui::Color32::from_rgb(255, 255, 85),   // Yellow
         _ => egui::Color32::from_rgb(255, 255, 255),  // White
+    }
+}
+
+impl NovaGuiApp {
+    fn draw_installer_wizard(&mut self, ctx: &egui::Context) {
+        let panel_frame = egui::Frame::default()
+            .fill(egui::Color32::BLACK)
+            .inner_margin(8.0);
+
+        egui::CentralPanel::default().frame(panel_frame).show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(ui.available_height() * 0.08);
+                
+                // OS Icon
+                ui.label(
+                    egui::RichText::new("💿")
+                        .size(50.0)
+                );
+                ui.add_space(6.0);
+                
+                // Installer title
+                ui.heading(
+                    egui::RichText::new("NovaOS Setup Wizard")
+                        .size(26.0)
+                        .strong()
+                        .color(egui::Color32::from_rgb(0, 220, 255))
+                );
+                ui.label(
+                    egui::RichText::new("Install & configure the secure educational OS workspace")
+                        .color(egui::Color32::GRAY)
+                        .italics()
+                );
+                
+                ui.add_space(14.0);
+
+                // Steps indicators
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    ui.add_space(ui.available_width() * 0.05);
+                    
+                    let steps = [
+                        "1. Welcome", 
+                        "2. Disk", 
+                        "3. Packages", 
+                        "4. Install", 
+                        "5. Language", 
+                        "6. Keyboard", 
+                        "7. Timezone", 
+                        "8. Accounts"
+                    ];
+                    let current_idx = match self.installer_step {
+                        InstallerStep::Welcome => 0,
+                        InstallerStep::DiskPartitioning => 1,
+                        InstallerStep::PackageSelection => 2,
+                        InstallerStep::Installing => 3,
+                        InstallerStep::SetupLanguage => 4,
+                        InstallerStep::SetupKeyboard => 5,
+                        InstallerStep::SetupTimezone => 6,
+                        InstallerStep::SetupAccounts => 7,
+                        InstallerStep::Success => 7,
+                    };
+                    
+                    for (idx, name) in steps.iter().enumerate() {
+                        let color = if idx == current_idx {
+                            egui::Color32::from_rgb(0, 220, 255) // Active
+                        } else if idx < current_idx {
+                            egui::Color32::from_rgb(100, 255, 100) // Completed
+                        } else {
+                            egui::Color32::from_rgb(100, 100, 100) // Upcoming
+                        };
+                        ui.label(egui::RichText::new(*name).color(color).strong().small());
+                        if idx < steps.len() - 1 {
+                            ui.label(egui::RichText::new("➔").color(egui::Color32::from_rgb(60, 60, 60)).small());
+                        }
+                    }
+                });
+                
+                ui.add_space(16.0);
+
+                // Setup screen container
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(18, 18, 18))
+                    .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(32, 32, 32)))
+                    .rounding(egui::Rounding::same(12.0))
+                    .inner_margin(egui::Margin::symmetric(24.0, 20.0))
+                    .show(ui, |ui| {
+                        ui.set_width(400.0);
+                        ui.set_min_height(320.0);
+                        
+                        match self.installer_step {
+                            InstallerStep::Welcome => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("Welcome to NovaOS!").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(10.0);
+                                    ui.label("This wizard will guide you through installing the OS packages onto disk, and configuring localization, keyboard, and user accounts.");
+                                    ui.add_space(30.0);
+                                    
+                                    let btn = egui::Button::new(
+                                        egui::RichText::new("Get Started ➔").strong().color(egui::Color32::BLACK)
+                                    ).fill(egui::Color32::from_rgb(0, 220, 255));
+                                    
+                                    if ui.add_sized([ui.available_width(), 36.0], btn).clicked() {
+                                        self.installer_step = InstallerStep::DiskPartitioning;
+                                    }
+                                    
+                                    ui.add_space(10.0);
+                                    if ui.button("⚡ Skip Installer (Use Defaults)").clicked() {
+                                        userspace::save_system_config("English", "US QWERTY", "UTC");
+                                        self.is_installed = true;
+                                        drivers::vga::init_vga();
+                                        kernel::boot::print_boot_banner();
+                                        drivers::vga_println!("Skipped installer. Booted default system.");
+                                    }
+                                });
+                            }
+                            InstallerStep::DiskPartitioning => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("Configure Storage Partitions").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(8.0);
+                                    ui.label("Allocate physical blocks to the virtual NovaFS student partition directory map. Choose a partition size:");
+                                    ui.add_space(12.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("NovaFS Partition Size:");
+                                        ui.add(egui::Slider::new(&mut self.installer_partition_size, 32.0..=128.0).suffix(" MB"));
+                                    });
+                                    
+                                    ui.add_space(14.0);
+                                    
+                                    ui.group(|ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.label(egui::RichText::new("Planned Partition Layout:").strong().small());
+                                        ui.label(format!("  - Partition 1: /boot   (FAT32)  - 16 MB"));
+                                        ui.label(format!("  - Partition 2: /       (NovaFS) - {:.0} MB (Student Home)", self.installer_partition_size));
+                                        ui.label(format!("  - Partition 3: swap    (RAW)    - 8 MB"));
+                                    });
+                                    
+                                    ui.add_space(20.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        if ui.button("⏴ Back").clicked() {
+                                            self.installer_step = InstallerStep::Welcome;
+                                        }
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            let btn = egui::Button::new(egui::RichText::new("Partition Disk ➔").strong().color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(0, 220, 255));
+                                            if ui.add(btn).clicked() {
+                                                self.installer_step = InstallerStep::PackageSelection;
+                                            }
+                                        });
+                                    });
+                                });
+                            }
+                            InstallerStep::PackageSelection => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("Select Software Packages").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(8.0);
+                                    ui.label("Configure standard package manager components to pre-install into the VFS /bin directory maps:");
+                                    ui.add_space(14.0);
+                                    
+                                    let mut available = userspace::novapkg::get_all_available();
+                                    available.sort_by(|a, b| a.name.cmp(&b.name));
+ 
+                                    for pkg in &available {
+                                        let is_core = pkg.name == "libc";
+                                        let mut checked = self.installer_selected_packages.contains(&pkg.name) || is_core;
+                                        
+                                        ui.add_enabled_ui(!is_core, |ui| {
+                                            let emoji = match pkg.name.as_str() {
+                                                "libc" => "📚",
+                                                "libm" => "🔢",
+                                                "shell-utils" => "💻",
+                                                "network-tools" => "🌐",
+                                                "python" => "🐍",
+                                                "gcc" => "🛠️",
+                                                "git" => "🗂️",
+                                                _ => "📦",
+                                            };
+                                            let display_name = if is_core {
+                                                format!("{} {} ({}) [Pre-installed]", emoji, pkg.name, pkg.version)
+                                            } else {
+                                                format!("{} {} ({})", emoji, pkg.name, pkg.version)
+                                            };
+                                            
+                                            if ui.checkbox(&mut checked, &display_name).on_hover_text(&pkg.description).changed() {
+                                                if checked {
+                                                    self.installer_selected_packages.insert(pkg.name.clone());
+                                                } else {
+                                                    self.installer_selected_packages.remove(&pkg.name);
+                                                }
+                                            }
+                                        });
+                                    }
+                                    
+                                    ui.add_space(20.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        if ui.button("⏴ Back").clicked() {
+                                            self.installer_step = InstallerStep::DiskPartitioning;
+                                        }
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            let btn = egui::Button::new(egui::RichText::new("Install OS ➔").strong().color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(0, 220, 255));
+                                            if ui.add(btn).clicked() {
+                                                self.installer_step = InstallerStep::Installing;
+                                                self.installer_progress = 0.0;
+                                            }
+                                        });
+                                    });
+                                });
+                            }
+                            InstallerStep::Installing => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("Installing NovaOS...").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(15.0);
+                                    
+                                    self.installer_progress += 0.02;
+                                    if self.installer_progress >= 1.0 {
+                                        self.installer_progress = 1.0;
+                                        self.installer_step = InstallerStep::SetupLanguage;
+                                    }
+                                    
+                                    ui.add(egui::ProgressBar::new(self.installer_progress).show_percentage());
+                                    ui.add_space(10.0);
+                                    
+                                    let current_action = if self.installer_progress < 0.3 {
+                                        "Formating disk blocks & creating NovaFS filesystem superblock..."
+                                    } else if self.installer_progress < 0.7 {
+                                        "Extracting software package binaries (shell, gcc, python) into /bin..."
+                                    } else {
+                                        "Writing master boot record (MBR) and partitioning virtual sectors..."
+                                    };
+                                    ui.label(egui::RichText::new(current_action).small().italics().color(egui::Color32::GRAY));
+                                    
+                                    ui.ctx().request_repaint();
+                                });
+                            }
+                            InstallerStep::SetupLanguage => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("OS Setup: Select Language").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(10.0);
+                                    ui.label("Select the primary system language and locale:");
+                                    ui.add_space(14.0);
+                                    
+                                    let languages = ["English", "Spanish (Español)", "French (Français)", "German (Deutsch)", "Japanese (日本語)", "Chinese (中文)"];
+                                    for lang in languages {
+                                        ui.radio_value(&mut self.setup_language, lang.to_string(), lang);
+                                    }
+                                    
+                                    ui.add_space(20.0);
+                                    ui.horizontal(|ui| {
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            let btn = egui::Button::new(egui::RichText::new("Next ➔").strong().color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(0, 220, 255));
+                                            if ui.add(btn).clicked() {
+                                                self.installer_step = InstallerStep::SetupKeyboard;
+                                            }
+                                        });
+                                    });
+                                });
+                            }
+                            InstallerStep::SetupKeyboard => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("OS Setup: Select Keyboard Layout").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(10.0);
+                                    ui.label("Select keyboard key mapping layout:");
+                                    ui.add_space(14.0);
+                                    
+                                    let layouts = ["US QWERTY", "UK QWERTY", "French AZERTY", "German QWERTZ"];
+                                    for kbd in layouts {
+                                        ui.radio_value(&mut self.setup_keyboard, kbd.to_string(), kbd);
+                                    }
+                                    
+                                    ui.add_space(20.0);
+                                    ui.horizontal(|ui| {
+                                        if ui.button("⏴ Back").clicked() {
+                                            self.installer_step = InstallerStep::SetupLanguage;
+                                        }
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            let btn = egui::Button::new(egui::RichText::new("Next ➔").strong().color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(0, 220, 255));
+                                            if ui.add(btn).clicked() {
+                                                self.installer_step = InstallerStep::SetupTimezone;
+                                            }
+                                        });
+                                    });
+                                });
+                            }
+                            InstallerStep::SetupTimezone => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("OS Setup: Select Timezone").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(10.0);
+                                    ui.label("Select system time clock offset:");
+                                    ui.add_space(14.0);
+                                    
+                                    let timezones = ["UTC", "America/New_York (EST/EDT)", "Europe/London (GMT/BST)", "Asia/Tokyo (JST)", "Asia/Shanghai (CST)"];
+                                    for tz in timezones {
+                                        ui.radio_value(&mut self.setup_timezone, tz.to_string(), tz);
+                                    }
+                                    
+                                    ui.add_space(20.0);
+                                    ui.horizontal(|ui| {
+                                        if ui.button("⏴ Back").clicked() {
+                                            self.installer_step = InstallerStep::SetupKeyboard;
+                                        }
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            let btn = egui::Button::new(egui::RichText::new("Next ➔").strong().color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(0, 220, 255));
+                                            if ui.add(btn).clicked() {
+                                                self.installer_step = InstallerStep::SetupAccounts;
+                                                self.setup_error = None;
+                                            }
+                                        });
+                                    });
+                                });
+                            }
+                            InstallerStep::SetupAccounts => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("OS Setup: Create Account").strong().size(18.0).color(egui::Color32::WHITE));
+                                    ui.add_space(6.0);
+                                    
+                                    ui.style_mut().visuals.extreme_bg_color = egui::Color32::from_rgb(26, 26, 26);
+                                    ui.style_mut().visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
+                                    
+                                    ui.label(egui::RichText::new("👤 Username").strong().color(egui::Color32::LIGHT_GREEN));
+                                    ui.add(egui::TextEdit::singleline(&mut self.installer_student_user).hint_text("e.g. student1"));
+                                    
+                                    ui.add_space(6.0);
+                                    ui.label(egui::RichText::new("🔑 Password").strong().color(egui::Color32::LIGHT_BLUE));
+                                    ui.add(egui::TextEdit::singleline(&mut self.installer_student_pass).password(true).hint_text("password"));
+                                    
+                                    ui.add_space(6.0);
+                                    ui.label(egui::RichText::new("🔑 Confirm Password").strong().color(egui::Color32::LIGHT_BLUE));
+                                    ui.add(egui::TextEdit::singleline(&mut self.installer_student_pass_confirm).password(true).hint_text("confirm password"));
+                                    
+                                    if let Some(ref err) = self.setup_error {
+                                        ui.add_space(4.0);
+                                        ui.label(egui::RichText::new(format!("❌ {}", err)).color(egui::Color32::from_rgb(255, 100, 100)).small());
+                                    }
+                                    
+                                    ui.add_space(14.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        if ui.button("⏴ Back").clicked() {
+                                            self.installer_step = InstallerStep::SetupTimezone;
+                                        }
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            let btn = egui::Button::new(egui::RichText::new("Complete Setup ➔").strong().color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(100, 255, 100));
+                                            if ui.add(btn).clicked() {
+                                                if self.installer_student_user.is_empty() || self.installer_student_pass.is_empty() {
+                                                    self.setup_error = Some("Please fill in all account fields".to_string());
+                                                } else if self.installer_student_pass != self.installer_student_pass_confirm {
+                                                    self.setup_error = Some("Passwords do not match".to_string());
+                                                } else {
+                                                    self.setup_error = None;
+                                                    self.installer_step = InstallerStep::Success;
+                                                    
+                                                    // Save system locale configs to VFS files
+                                                    userspace::save_system_config(&self.setup_language, &self.setup_keyboard, &self.setup_timezone);
+                                                    
+                                                    // Apply users setup: both root and student use the user's password
+                                                    userspace::apply_installation_setup(
+                                                        &self.installer_student_pass, 
+                                                        &self.installer_student_user, 
+                                                        &self.installer_student_pass
+                                                    );
+                                                    
+                                                    // Install chosen packages
+                                                    for pkg in &self.installer_selected_packages {
+                                                        let _ = userspace::novapkg::install_package(pkg);
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    });
+                                });
+                            }
+                            InstallerStep::Success => {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("Setup Completed Successfully!").strong().size(18.0).color(egui::Color32::from_rgb(100, 255, 100)));
+                                    ui.add_space(10.0);
+                                    ui.label("NovaOS has been successfully installed on the disk partitions and configured with your localization settings and user credentials.");
+                                    ui.add_space(8.0);
+                                    ui.label("Click the button below to reboot the target simulator and log in.");
+                                    ui.add_space(30.0);
+                                    
+                                    let btn = egui::Button::new(
+                                        egui::RichText::new("Reboot & Boot NovaOS ➔").strong().color(egui::Color32::BLACK)
+                                    ).fill(egui::Color32::from_rgb(100, 255, 100));
+                                    
+                                    if ui.add_sized([ui.available_width(), 36.0], btn).clicked() {
+                                        self.is_installed = true;
+                                        self.login_username.clear();
+                                        self.login_password.clear();
+                                    }
+                                });
+                            }
+                        }
+                    });
+            });
+        });
     }
 }

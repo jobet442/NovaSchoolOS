@@ -20,6 +20,12 @@ pub mod syscall;
 #[cfg(not(target_os = "none"))]
 pub mod security;
 
+#[cfg(not(target_os = "none"))]
+pub mod ipc;
+
+#[cfg(not(target_os = "none"))]
+pub mod mutex;
+
 pub fn init_kernel() {
     #[cfg(not(target_os = "none"))]
     {
@@ -40,6 +46,12 @@ pub fn init_kernel() {
 
         // 5. Initialize Syscall Tracers
         syscall::init_syscall();
+
+        // 6. Initialize IPC subsystem
+        ipc::init_ipc();
+
+        // 7. Initialize Mutex subsystem
+        mutex::init_mutex();
     }
 
     drivers::vga_println!("[Kernel init] All virtual subsystems configured successfully.");
